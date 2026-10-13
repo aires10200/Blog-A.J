@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Leia e compartilhe artigos no Blog A.J.">
+  <title>Blog A.J</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="cabecalho">
+    <a class="marca" href="blog.html" aria-label="Página inicial do Blog A.J"><h1><span class="cor-destaque">Blog</span> A.J</h1></a>
+    <div class="pesquisa"><span class="icone-lupa" aria-hidden="true"></span><input type="search" id="campo-pesquisa" placeholder="Pesquisar no blog" aria-label="Pesquisar postagens"></div>
+    <a class="link-novo-post" href="novo-post.html">+ Novo artigo</a>
+  </header>
+  <main id="lista-posts" aria-live="polite" aria-busy="true"><p class="mensagem mensagem-info">Carregando postagens...</p></main>
+  <script>
+    const API_URL = 'http://localhost:3001';
+    const listaPosts = document.getElementById('lista-posts');
+    const campoPesquisa = document.getElementById('campo-pesquisa');
+    let temporizadorPesquisa;
+    let requisicaoAtual = 0;
+
+    // Identifica este navegador. Isso limita curtidas por navegador/perfil, não por pessoa real.
+    function obterIdVisitante() {
+      let id = localStorage.getItem('blogAJ_visitante_id');
+      if (!id) {
+        id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        localStorage.setItem('blogAJ_visitante_id', id);
+      }
+      return id;
+    }
+    const visitorId = obterIdVisitante();
+
+    function mostrarMensagem(texto, tipo = 'info') {
+      listaPosts.replaceChildren();
+      const mensagem = document.createElement('p');
+      mensagem.className = `mensagem mensagem-${tipo}`;
+      mensagem.textContent = texto;
+      listaPosts.appendChild(mensagem);
+      listaPosts.setAttribute('aria-busy', 'false');
+    }
+
+    function criarIconeCoracao() {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true'); svg.classList.add('icone-coracao');
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', 'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z');
+      path.setAttribute('stroke-linecap', 'round'); path.setAttribute('stroke-linejoin', 'round'); svg.appendChild(path); return svg;
+    }
+
+    function criarCard(post) {
+      const artigo = document.createElement('article'); artigo.className = 'card';
+      const topo = document.createElement('div'); topo.className = 'card-top';
+      const data = document.createElement('span'); data.className = 'data'; data.textContent = post.data || 'Data não informada';
+      const acoes = document.createElement('div'); acoes.className = 'acoes-post';
+      const botaoCurtir = document.createElement('button'); botaoCurtir.type = 'button'; botaoCurtir.className = 'botao-curtir';
+      const icone = criarIconeCoracao(); const contador = document.createElement('span'); contador.className = 'contador-curtidas';
+      contador.textContent = String(Number(post.curtidas) || 0); botaoCurtir.append(icone, contador);
+      if (post.jaCurtiu) { botaoCurtir.classList.add('curtido'); botaoCurtir.disabled = true; botaoCurtir.title = 'Você já curtiu este artigo neste navegador'; }
+      botaoCurtir.setAttribute('aria-label', post.jaCurtiu ? 'Você já curtiu este artigo' : `Curtir ${post.titulo || 'postagem'}`);
+      botaoCurtir.addEventListener('click', async () => {
+        if (botaoCurtir.disabled) return;
+        botaoCurtir.disabled = true;
+        try {
+          const resposta = await fetch(`${API_URL}/api/posts/${encodeURIComponent(post._id)}/like`, {
+            method: 'PUT', headers: { 'X-Visitor-Id': visitorId }
+          });
+          const dados = await resposta.json().catch(() => ({}));
+          if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível registrar a curtida.');
+          contador.textContent = String(Number(dados.curtidas) || 0);
+          botaoCurtir.classList.add('curtido'); botaoCurtir.title = 'Você já curtiu este artigo neste navegador';
+          botaoCurtir.setAttribute('aria-label', 'Você já curtiu este artigo');
+        } catch (erro) {
+          alert(erro.message || 'Erro ao curtir. Verifique se o servidor está funcionando.');
+          botaoCurtir.disabled = false;
+        }
+      });
+
+      const botaoApagar = document.createElement('button'); botaoApagar.type = 'button'; botaoApagar.className = 'botao-apagar';
+      botaoApagar.textContent = 'Apagar'; botaoApagar.setAttribute('aria-label', `Apagar o artigo ${post.titulo || ''}`);
+      botaoApagar.addEventListener('click', async () => {
+        if (!confirm(`Tem certeza de que deseja apagar o artigo “${post.titulo}”? Esta ação não pode ser desfeita.`)) return;
+        const token = prompt('Digite a senha administrativa para apagar este artigo:');
+        if (!token) return;
+        botaoApagar.disabled = true;
+        try {
+          const resposta = await fetch(`${API_URL}/api/posts/${encodeURIComponent(post._id)}`, {
+            method: 'DELETE', headers: { 'X-Admin-Token': token }
+          });
+          const dados = await resposta.json().catch(() => ({}));
+          if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível apagar o artigo.');
+          await carregarPosts(campoPesquisa.value.trim());
+        } catch (erro) {
+          alert(erro.message || 'Erro ao apagar artigo.'); botaoApagar.disabled = false;
+        }
+      });
+      acoes.append(botaoCurtir, botaoApagar); topo.append(data, acoes);
+      const titulo = document.createElement('h2'); titulo.textContent = post.titulo || 'Postagem sem título';
+      const resumo = document.createElement('p'); resumo.className = 'resumo-post'; resumo.textContent = post.resumo || '';
+      artigo.append(topo, titulo, resumo); return artigo;
+    }
+
+    async function carregarPosts(termo = '') {
+      const idRequisicao = ++requisicaoAtual;
+      listaPosts.setAttribute('aria-busy', 'true');
+      try {
+        const url = new URL(`${API_URL}/api/posts`); if (termo) url.searchParams.set('q', termo);
+        const resposta = await fetch(url, { headers: { 'X-Visitor-Id': visitorId } });
+        const dados = await resposta.json().catch(() => ({}));
+        if (!resposta.ok) throw new Error(dados.erro || 'O servidor não conseguiu carregar as postagens.');
+        if (idRequisicao !== requisicaoAtual) return;
+        if (!Array.isArray(dados)) throw new Error('A resposta da API está em um formato inesperado.');
+        if (!dados.length) { mostrarMensagem(termo ? 'Nenhuma postagem encontrada para essa pesquisa.' : 'Ainda não há postagens. Que tal publicar o primeiro artigo?', 'vazio'); return; }
+        listaPosts.replaceChildren(...dados.map(criarCard)); listaPosts.setAttribute('aria-busy', 'false');
+      } catch (erro) {
+        if (idRequisicao !== requisicaoAtual) return;
+        console.error('Erro ao carregar postagens:', erro);
+        mostrarMensagem(`${erro.message || 'Não foi possível carregar o blog.'} Confira se o servidor está ligado na porta 3001.`, 'erro');
+      }
+    }
+    campoPesquisa.addEventListener('input', () => { clearTimeout(temporizadorPesquisa); temporizadorPesquisa = setTimeout(() => carregarPosts(campoPesquisa.value.trim()), 250); });
+    carregarPosts();
+  </script>
+</body>
+</html>

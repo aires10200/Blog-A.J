@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Publique um novo artigo no Blog A.J.">
+  <title>Novo artigo — Blog A.J</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="cabecalho cabecalho-formulario">
+    <a class="marca" href="blog.html" aria-label="Voltar para a página inicial do Blog A.J">
+      <h1><span class="cor-destaque">Blog</span> A.J</h1>
+    </a>
+  </header>
+
+  <main class="container-form">
+    <a href="blog.html" class="voltar">← Voltar para o blog</a>
+    <section class="painel-form">
+      <h2>Novo artigo</h2>
+      <p class="texto-ajuda">Compartilhe uma ideia, uma descoberta ou algo que você queira contar.</p>
+
+      <form id="form-post">
+        <div class="campo-form">
+          <label for="titulo">Título</label>
+          <input type="text" id="titulo" name="titulo" placeholder="Digite o título do artigo" maxlength="150" required>
+          <small><span id="contador-titulo">0</span>/150 caracteres</small>
+        </div>
+
+        <div class="campo-form">
+          <label for="resumo">Conteúdo do artigo</label>
+          <textarea id="resumo" name="resumo" placeholder="Escreva seu artigo aqui..." maxlength="10000" required></textarea>
+          <small><span id="contador-resumo">0</span>/10000 caracteres</small>
+        </div>
+
+        <p id="mensagem-form" class="mensagem-form" role="status" aria-live="polite" hidden></p>
+        <button id="botao-publicar" class="botao-publicar" type="submit">Publicar artigo</button>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    const API_URL = 'http://localhost:3001';
+    const formulario = document.getElementById('form-post');
+    const campoTitulo = document.getElementById('titulo');
+    const campoResumo = document.getElementById('resumo');
+    const botaoPublicar = document.getElementById('botao-publicar');
+    const mensagem = document.getElementById('mensagem-form');
+
+    campoTitulo.addEventListener('input', () => {
+      document.getElementById('contador-titulo').textContent = campoTitulo.value.length;
+    });
+    campoResumo.addEventListener('input', () => {
+      document.getElementById('contador-resumo').textContent = campoResumo.value.length;
+    });
+
+    function mostrarMensagem(texto, tipo) {
+      mensagem.textContent = texto;
+      mensagem.className = `mensagem-form mensagem-${tipo}`;
+      mensagem.hidden = false;
+    }
+
+    formulario.addEventListener('submit', async (evento) => {
+      evento.preventDefault();
+      const titulo = campoTitulo.value.trim();
+      const resumo = campoResumo.value.trim();
+
+      if (!titulo || !resumo) {
+        mostrarMensagem('Preencha o título e o conteúdo antes de publicar.', 'erro');
+        return;
+      }
+      if (titulo.length > 150 || resumo.length > 10000) {
+        mostrarMensagem('O título deve ter até 150 caracteres e o conteúdo até 10.000.', 'erro');
+        return;
+      }
+
+      botaoPublicar.disabled = true;
+      botaoPublicar.textContent = 'Publicando...';
+      mensagem.hidden = true;
+
+      try {
+        const resposta = await fetch(`${API_URL}/api/posts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ titulo, resumo })
+        });
+        const dados = await resposta.json().catch(() => ({}));
+        if (!resposta.ok) throw new Error(dados.erro || 'O servidor não conseguiu publicar o artigo.');
+        mostrarMensagem('Artigo publicado com sucesso! Redirecionando para o blog...', 'sucesso');
+        setTimeout(() => { window.location.href = 'blog.html'; }, 900);
+      } catch (erro) {
+        console.error('Erro ao publicar artigo:', erro);
+        mostrarMensagem(`${erro.message || 'Não foi possível publicar o artigo.'} Confira se o servidor está ligado na porta 3001.`, 'erro');
+        botaoPublicar.disabled = false;
+        botaoPublicar.textContent = 'Publicar artigo';
+      }
+    });
+  </script>
+</body>
+</html>
